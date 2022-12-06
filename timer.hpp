@@ -3,71 +3,76 @@
 #include <boost/asio.hpp>
 #include <boost/thread/thread.hpp>
 #include <functional>
+#include <iostream>
 #include <mutex>
+#include <thread>
 
-using TimerProc = std::function<void()>;
-class CppTimer {
- private:
-  enum class TimerStatus { Default, Running, Stop };
-  static boost::asio::io_service ioService;
-  static boost::thread_group threadpool;
-  static std::once_flag flag;
-  boost::asio::deadline_timer dlTimer;
-  uint interval;
-  TimerProc timeoutProc;
-  TimerStatus timerStatus;
-
-  void setTimeoutProc(TimerProc proc) { timeoutProc = proc; }
-  void timeout()
-  {
-        
-  }
+class Timer {
  public:
-  CppTimer(TimerProc proc)
-      : dlTimer(ioService),
-        timerStatus(TimerStatus::Default),
-        timeoutProc(proc) {
-    //           threadpool.create_thread(
-    //   boost::bind(&boost::asio::io_service::run, &ioService));
-    std::call_once(flag, [&] {
-      threadpool.create_thread([&] { ioService.run(); });
-      threadpool.create_thread([&] { ioService.run(); });
-    });
+  Timer() = delete;
+
+  Timer(int period, std::function<void()> func)
+      : _callFunc(func), _period(period), _timer(_ioc) {
+    static std::once_flag flag;
+    start();
+    std::call_once(flag, [this] {this->startThread();});
   }
 
-  ~CppTimer() { stop(); };
+  ~Timer() {
+    std::cout << "timer is stop." << std::endl;
 
-  void start(uint32_t msExpired) {
-    if (msExpired == 0) return;
+    stop();
+  };
 
-    dlTimer.expires_from_now(boost::posix_time::milliseconds(msExpired));
-    dlTimer.async_wait([=](const boost::system::error_code &ec) {
-      timeoutProc();
-    });
-    timerStatus = TimerStatus::Running;
+  void start() {
+    _timer.expires_from_now(boost::posix_time::milliseconds(_period));
+
+    _timer.async_wait([this](auto e) { this->onTimer(e, this->_timer); });
   }
 
   void stop() {
-    if (timerStatus == TimerStatus::Running) {
-      dlTimer.cancel();
-    }
-    timerStatus = TimerStatus::Stop;
+    _callFunc = nullptr;
+
+    _ioc.stop();
   };
 
-  static void singleShot(TimerProc proc, uint32_t msExpired) {
-    if (!proc || msExpired == 0) {
+  void setCallFunc(std::function<void()> func) { _callFunc = func; };
+
+ private:
+  void startThread() {
+    for (int i = 0; i < 1; i++) {
+      std::thread([&] { _ioc.run(); }).detach();
+    }
+  }
+  std::function<void()> _callFunc;
+
+  int _period;
+
+  static boost::asio::io_context _ioc;
+
+  boost::asio::deadline_timer _timer;
+
+  void onTimer(const boost::system::error_code& e,
+               boost::asio::deadline_timer& ptime) {
+    if (e) {
+      std::cout << "timer has some error:" << e.message()
+                << ", error code:" << e.value() << std::endl;
+     // return;
+    }
+
+    if (!_callFunc)
+
+    {
+      std::cout << "call function is null." << std::endl;
+
       return;
     }
-    auto timer = new CppTimer([&] {});
-    timer->setTimeoutProc([timer, proc] {
-      proc();
-      timer->stop();
-      delete timer;
-    });
-    timer->start(msExpired);
+
+    _callFunc();
+    ptime.expires_from_now(boost::posix_time::milliseconds(_period));
+
+    ptime.async_wait([this, &ptime](auto e) { this->onTimer(e, ptime); });
   }
 };
 
-boost::asio::io_service CppTimer::ioService;
-boost::thread_group CppTimer::threadpool;
-std::once_flag CppTimer::flag;
+boost::asio::io_context Timer::_ioc;
