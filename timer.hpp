@@ -7,16 +7,14 @@
 #include <mutex>
 #include <thread>
 
-class Timer {
+class CppTimer {
  public:
-  Timer() = delete;
+  CppTimer() = delete;
 
-  Timer(int period, std::function<void()> func)
+  CppTimer(int period, std::function<void()> func)
       : _callFunc(func), _period(period), _timer(_ioc) {}
 
-  ~Timer() {
-    std::cout << "timer is stop." << std::endl;
-
+  ~CppTimer() {
     stop();
   };
 
@@ -37,18 +35,17 @@ class Timer {
   void setCallFunc(std::function<void()> func) { _callFunc = func; };
 
  private:
+  std::function<void()> _callFunc;
+  int _period;
+  boost::asio::deadline_timer _timer;
+  static boost::asio::io_context _ioc;
+  static std::once_flag flag;
+
   void startThread() {
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 3; i++) {
       std::thread([&] { _ioc.run(); }).detach();
     }
   }
-  std::function<void()> _callFunc;
-
-  int _period;
-
-  static boost::asio::io_context _ioc;
-  static std::once_flag flag;
-  boost::asio::deadline_timer _timer;
 
   void onTimer(const boost::system::error_code& e,
                boost::asio::deadline_timer& ptime) {
@@ -59,19 +56,16 @@ class Timer {
     }
 
     if (!_callFunc)
-
     {
       std::cout << "call function is null." << std::endl;
-
       return;
     }
 
     _callFunc();
     ptime.expires_from_now(boost::posix_time::milliseconds(_period));
-
     ptime.async_wait([this, &ptime](auto e) { this->onTimer(e, ptime); });
   }
 };
 
-boost::asio::io_context Timer::_ioc;
-std::once_flag Timer::flag;
+boost::asio::io_context CppTimer::_ioc;
+std::once_flag CppTimer::flag;
