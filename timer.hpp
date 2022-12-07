@@ -12,11 +12,7 @@ class Timer {
   Timer() = delete;
 
   Timer(int period, std::function<void()> func)
-      : _callFunc(func), _period(period), _timer(_ioc) {
-    static std::once_flag flag;
-    start();
-    std::call_once(flag, [this] {this->startThread();});
-  }
+      : _callFunc(func), _period(period), _timer(_ioc) {}
 
   ~Timer() {
     std::cout << "timer is stop." << std::endl;
@@ -28,6 +24,8 @@ class Timer {
     _timer.expires_from_now(boost::posix_time::milliseconds(_period));
 
     _timer.async_wait([this](auto e) { this->onTimer(e, this->_timer); });
+
+    std::call_once(flag, [this] { this->startThread(); });
   }
 
   void stop() {
@@ -49,7 +47,7 @@ class Timer {
   int _period;
 
   static boost::asio::io_context _ioc;
-
+  static std::once_flag flag;
   boost::asio::deadline_timer _timer;
 
   void onTimer(const boost::system::error_code& e,
@@ -57,7 +55,7 @@ class Timer {
     if (e) {
       std::cout << "timer has some error:" << e.message()
                 << ", error code:" << e.value() << std::endl;
-     // return;
+      // return;
     }
 
     if (!_callFunc)
@@ -76,3 +74,4 @@ class Timer {
 };
 
 boost::asio::io_context Timer::_ioc;
+std::once_flag Timer::flag;
